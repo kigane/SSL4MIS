@@ -136,7 +136,7 @@ def train(args, snapshot_path):
             outputs_aux1_soft = torch.softmax(outputs_aux1, dim=1)
             outputs_aux2_soft = torch.softmax(outputs_aux2, dim=1)
             outputs_aux3_soft = torch.softmax(outputs_aux3, dim=1)
-
+            # L_sup ce
             loss_ce = ce_loss(outputs[:args.labeled_bs],
                               label_batch[:args.labeled_bs][:].long())
             loss_ce_aux1 = ce_loss(outputs_aux1[:args.labeled_bs],
@@ -145,7 +145,7 @@ def train(args, snapshot_path):
                                    label_batch[:args.labeled_bs][:].long())
             loss_ce_aux3 = ce_loss(outputs_aux3[:args.labeled_bs],
                                    label_batch[:args.labeled_bs][:].long())
-
+            # L_sup dice
             loss_dice = dice_loss(
                 outputs_soft[:args.labeled_bs], label_batch[:args.labeled_bs].unsqueeze(1))
             loss_dice_aux1 = dice_loss(
@@ -154,11 +154,13 @@ def train(args, snapshot_path):
                 outputs_aux2_soft[:args.labeled_bs], label_batch[:args.labeled_bs].unsqueeze(1))
             loss_dice_aux3 = dice_loss(
                 outputs_aux3_soft[:args.labeled_bs], label_batch[:args.labeled_bs].unsqueeze(1))
-
+            # L_sup
             supervised_loss = (loss_ce + loss_ce_aux1 + loss_ce_aux2 + loss_ce_aux3 +
                                loss_dice + loss_dice_aux1 + loss_dice_aux2 + loss_dice_aux3) / 8
-
-            consistency_weight = get_current_consistency_weight(iter_num // 150)
+            # lambda
+            consistency_weight = get_current_consistency_weight(
+                iter_num // 150)
+            # L_unsup: L_pyc
             consistency_loss_aux1 = torch.mean(
                 (outputs_soft[args.labeled_bs:] - outputs_aux1_soft[args.labeled_bs:]) ** 2)
             consistency_loss_aux2 = torch.mean(
@@ -166,7 +168,8 @@ def train(args, snapshot_path):
             consistency_loss_aux3 = torch.mean(
                 (outputs_soft[args.labeled_bs:] - outputs_aux3_soft[args.labeled_bs:]) ** 2)
 
-            consistency_loss = (consistency_loss_aux1 + consistency_loss_aux2 + consistency_loss_aux3) / 3
+            consistency_loss = (
+                consistency_loss_aux1 + consistency_loss_aux2 + consistency_loss_aux3) / 3
             loss = supervised_loss + consistency_weight * consistency_loss
             optimizer.zero_grad()
             loss.backward()

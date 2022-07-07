@@ -1,3 +1,21 @@
+from networks.net_factory import net_factory
+from val_2D import test_single_volume_ds
+from utils import losses, metrics, ramps
+from dataloaders.dataset import BaseDataSets, RandomGenerator, TwoStreamBatchSampler
+from dataloaders import utils
+from tqdm import tqdm
+from torchvision.utils import make_grid
+from torchvision import transforms
+from torch.utils.data import DataLoader
+from torch.nn.modules.loss import CrossEntropyLoss
+from torch.nn import BCEWithLogitsLoss
+from tensorboardX import SummaryWriter
+import torch.optim as optim
+import torch.nn.functional as F
+import torch.nn as nn
+import torch.backends.cudnn as cudnn
+import torch
+import numpy as np
 import argparse
 import logging
 import os
@@ -6,25 +24,6 @@ import shutil
 import sys
 import time
 
-import numpy as np
-import torch
-import torch.backends.cudnn as cudnn
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from tensorboardX import SummaryWriter
-from torch.nn import BCEWithLogitsLoss
-from torch.nn.modules.loss import CrossEntropyLoss
-from torch.utils.data import DataLoader
-from torchvision import transforms
-from torchvision.utils import make_grid
-from tqdm import tqdm
-
-from dataloaders import utils
-from dataloaders.dataset import BaseDataSets, RandomGenerator, TwoStreamBatchSampler
-from utils import losses, metrics, ramps
-from val_2D import test_single_volume_ds
-from networks.net_factory import net_factory
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
@@ -104,8 +103,7 @@ def train(args, snapshot_path):
         labeled_idxs, unlabeled_idxs, batch_size, batch_size-args.labeled_bs)
 
     trainloader = DataLoader(db_train, batch_sampler=batch_sampler,
-                             num_workers=4, pin_memory=True, worker_init_fn=worker_init_fn)
-
+                             num_workers=0, pin_memory=True, worker_init_fn=worker_init_fn)
     model.train()
 
     valloader = DataLoader(db_val, batch_size=1, shuffle=False,
@@ -136,7 +134,7 @@ def train(args, snapshot_path):
             outputs_aux1_soft = torch.softmax(outputs_aux1, dim=1)
             outputs_aux2_soft = torch.softmax(outputs_aux2, dim=1)
             outputs_aux3_soft = torch.softmax(outputs_aux3, dim=1)
-
+            # L_sup CrossEntropyLoss中包含Softmax操作
             loss_ce = ce_loss(outputs[:args.labeled_bs],
                               label_batch[:args.labeled_bs][:].long())
             loss_ce_aux1 = ce_loss(outputs_aux1[:args.labeled_bs],
@@ -145,7 +143,7 @@ def train(args, snapshot_path):
                                    label_batch[:args.labeled_bs][:].long())
             loss_ce_aux3 = ce_loss(outputs_aux3[:args.labeled_bs],
                                    label_batch[:args.labeled_bs][:].long())
-
+            # L_sup
             loss_dice = dice_loss(
                 outputs_soft[:args.labeled_bs], label_batch[:args.labeled_bs].unsqueeze(1))
             loss_dice_aux1 = dice_loss(
@@ -158,11 +156,14 @@ def train(args, snapshot_path):
             supervised_loss = (loss_ce+loss_ce_aux1+loss_ce_aux2+loss_ce_aux3 +
                                loss_dice+loss_dice_aux1+loss_dice_aux2+loss_dice_aux3)/8
 
+            # p_avg
             preds = (outputs_soft+outputs_aux1_soft +
                      outputs_aux2_soft+outputs_aux3_soft)/4
 
+            # D_s^i=\sum_{j=0}^{C-1}p_s^{i,j}\log_{p_c^{i,j}}^{p_s^{i,j}}
             variance_main = torch.sum(kl_distance(
                 torch.log(outputs_soft[args.labeled_bs:]), preds[args.labeled_bs:]), dim=1, keepdim=True)
+            # w_s^i=e^{-D_s^i}
             exp_variance_main = torch.exp(-variance_main)
 
             variance_aux1 = torch.sum(kl_distance(
@@ -177,10 +178,12 @@ def train(args, snapshot_path):
                 torch.log(outputs_aux3_soft[args.labeled_bs:]), preds[args.labeled_bs:]), dim=1, keepdim=True)
             exp_variance_aux3 = torch.exp(-variance_aux3)
 
+            # lambda
             consistency_weight = get_current_consistency_weight(iter_num//150)
+
             consistency_dist_main = (
                 preds[args.labeled_bs:] - outputs_soft[args.labeled_bs:]) ** 2
-
+            # L_urc + L_umc
             consistency_loss_main = torch.mean(
                 consistency_dist_main * exp_variance_main) / (torch.mean(exp_variance_main) + 1e-8) + torch.mean(variance_main)
 

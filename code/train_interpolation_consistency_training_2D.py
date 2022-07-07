@@ -168,13 +168,14 @@ def train(args, snapshot_path):
                 unlabeled_volume_batch_1 * ict_mix_factors
             input_volume_batch = torch.cat(
                 [labeled_volume_batch, batch_ux_mixed], dim=0)
-            outputs = model(input_volume_batch)
+            outputs = model(input_volume_batch)  # 后半 f(Mix(u_j, u_k))
             outputs_soft = torch.softmax(outputs, dim=1)
             with torch.no_grad():
                 ema_output_ux0 = torch.softmax(
                     ema_model(unlabeled_volume_batch_0), dim=1)
                 ema_output_ux1 = torch.softmax(
                     ema_model(unlabeled_volume_batch_1), dim=1)
+                # Mix(f(u_j), f(u_k))
                 batch_pred_mixed = ema_output_ux0 * \
                     (1.0 - ict_mix_factors) + ema_output_ux1 * ict_mix_factors
 
