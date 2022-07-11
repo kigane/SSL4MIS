@@ -56,7 +56,7 @@ def test_single_volume_ds(image, label, net, classes, patch_size=[256, 256]):
                 output_main, dim=1), dim=1).squeeze(0)
             out = out.cpu().detach().numpy()
             pred = zoom(out, (x / patch_size[0], y / patch_size[1]), order=0)
-            prediction[ind] = pred
+            prediction[0] = pred
     else:
         for ind in range(image.shape[0]):
             slice = image[ind, :, :]
