@@ -1,7 +1,7 @@
 from networks.net_factory import net_factory
 from val_2D import test_single_volume_ds
 from utils import losses, metrics, ramps
-from dataloaders.dataset import BaseDataSets, RandomGenerator, TwoStreamBatchSampler
+from dataloaders.dataset import BaseDataSets, MSDataSets, RandomGenerator, TwoStreamBatchSampler
 from dataloaders import utils
 from tqdm import tqdm
 from torchvision.utils import make_grid
@@ -27,9 +27,9 @@ import time
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
-                    default='../data/ACDC', help='Name of Experiment')
+                    default='../data/isbi2015raw', help='Name of Experiment')
 parser.add_argument('--exp', type=str,
-                    default='ACDC/Uncertainty_Rectified_Pyramid_Consistency', help='experiment_name')
+                    default='ISBI/Uncertainty_Rectified_Pyramid_Consistency', help='experiment_name')
 parser.add_argument('--model', type=str,
                     default='unet_urpc', help='model_name')
 parser.add_argument('--max_iterations', type=int,
@@ -61,6 +61,8 @@ args = parser.parse_args()
 
 def patients_to_slices(dataset, patiens_num):
     ref_dict = None
+    if "isbi" in dataset:
+        return 1177
     if "ACDC" in dataset:
         ref_dict = {"3": 68, "7": 136,
                     "14": 256, "21": 396, "28": 512, "35": 664, "140": 1312}
@@ -88,11 +90,17 @@ def train(args, snapshot_path):
 
     def worker_init_fn(worker_id):
         random.seed(args.seed + worker_id)
+    if 'isbi' in args.root_path:
+        db_train = MSDataSets(base_dir=args.root_path, split="train", num=None, transform=transforms.Compose([
+            RandomGenerator(args.patch_size)
+        ]))
+        db_val = MSDataSets(base_dir=args.root_path, split="val")
+    else:
+        db_train = BaseDataSets(base_dir=args.root_path, split="train", num=None, transform=transforms.Compose([
+            RandomGenerator(args.patch_size)
+        ]))
+        db_val = BaseDataSets(base_dir=args.root_path, split="val")
 
-    db_train = BaseDataSets(base_dir=args.root_path, split="train", num=None, transform=transforms.Compose([
-        RandomGenerator(args.patch_size)
-    ]))
-    db_val = BaseDataSets(base_dir=args.root_path, split="val")
     total_slices = len(db_train)
     labeled_slice = patients_to_slices(args.root_path, args.labeled_num)
     print("Total silices is: {}, labeled slices is: {}".format(
