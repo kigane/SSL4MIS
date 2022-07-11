@@ -1,12 +1,18 @@
+import argparse
+import os
+
+from networks.config import get_config
 from networks.efficientunet import Effi_UNet
 from networks.enet import ENet
-from networks.pnet import PNet2D
-from networks.unet import UNet, UNet_DS, UNet_URPC, UNet_CCT
-import argparse
-from networks.vision_transformer import SwinUnet as ViT_seg
-from networks.config import get_config
 from networks.nnunet import initialize_network
+from networks.pnet import PNet2D
+from networks.unet import UNet, UNet_CCT, UNet_DS, UNet_URPC
+from networks.vision_transformer import SwinUnet as ViT_seg
 
+# only for vscode debug
+if 'code' not in os.path.abspath(os.curdir):
+    print(os.curdir)
+    os.chdir('./code')
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,

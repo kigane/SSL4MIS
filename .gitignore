@@ -137,3 +137,5 @@ model/
 # test file
 code/test.py
 test.py
+
+code/wandb
