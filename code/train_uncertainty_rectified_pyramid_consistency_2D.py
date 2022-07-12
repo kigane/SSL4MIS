@@ -111,7 +111,7 @@ def train(args, snapshot_path):
         labeled_idxs, unlabeled_idxs, batch_size, batch_size-args.labeled_bs)
 
     trainloader = DataLoader(db_train, batch_sampler=batch_sampler,
-                             num_workers=0, pin_memory=True, worker_init_fn=worker_init_fn)
+                             num_workers=8, pin_memory=True, worker_init_fn=worker_init_fn)
     model.train()
 
     valloader = DataLoader(db_val, batch_size=1, shuffle=False,
