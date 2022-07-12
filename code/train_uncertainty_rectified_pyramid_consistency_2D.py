@@ -1,21 +1,3 @@
-from networks.net_factory import net_factory
-from val_2D import test_single_volume_ds
-from utils import losses, metrics, ramps
-from dataloaders.dataset import BaseDataSets, MSDataSets, RandomGenerator, TwoStreamBatchSampler
-from dataloaders import utils
-from tqdm import tqdm
-from torchvision.utils import make_grid
-from torchvision import transforms
-from torch.utils.data import DataLoader
-from torch.nn.modules.loss import CrossEntropyLoss
-from torch.nn import BCEWithLogitsLoss
-from tensorboardX import SummaryWriter
-import torch.optim as optim
-import torch.nn.functional as F
-import torch.nn as nn
-import torch.backends.cudnn as cudnn
-import torch
-import numpy as np
 import argparse
 import logging
 import os
@@ -24,6 +6,27 @@ import shutil
 import sys
 import time
 
+import numpy as np
+import torch
+import torch.backends.cudnn as cudnn
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from tensorboardX import SummaryWriter
+from torch.nn import BCEWithLogitsLoss
+from torch.nn.modules.loss import CrossEntropyLoss
+from torch.utils.data import DataLoader
+from torchvision import transforms
+from torchvision.utils import make_grid
+from tqdm import tqdm
+
+import wandb
+from dataloaders import utils
+from dataloaders.dataset import (BaseDataSets, MSDataSets, RandomGenerator,
+                                 TwoStreamBatchSampler)
+from networks.net_factory import net_factory
+from utils import losses, metrics, ramps
+from val_2D import test_single_volume_ds
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
@@ -80,6 +83,10 @@ def get_current_consistency_weight(epoch):
 
 
 def train(args, snapshot_path):
+    wandb.init(project='SSL4MSSeg',  # wandb项目名称
+            #    group=config.group,  # 记录的分组，用于过滤
+            #    job_type=config.job_type,  # 记录的类型，用于过滤
+               config=args)  # config必须接受字典对象
     base_lr = args.base_lr
     num_classes = args.num_classes
     batch_size = args.batch_size
@@ -115,7 +122,7 @@ def train(args, snapshot_path):
     model.train()
 
     valloader = DataLoader(db_val, batch_size=1, shuffle=False,
-                           num_workers=1)
+                           num_workers=0)
 
     optimizer = optim.SGD(model.parameters(), lr=base_lr,
                           momentum=0.9, weight_decay=0.0001)
@@ -129,7 +136,7 @@ def train(args, snapshot_path):
     max_epoch = max_iterations // len(trainloader) + 1
     best_performance = 0.0
     kl_distance = nn.KLDivLoss(reduction='none')
-    iterator = tqdm(range(max_epoch), ncols=70)
+    iterator = tqdm(range(max_epoch), ncols=140)
     for epoch_num in iterator:
         for i_batch, sampled_batch in enumerate(trainloader):
 
@@ -222,6 +229,16 @@ def train(args, snapshot_path):
                 param_group['lr'] = lr_
 
             iter_num = iter_num + 1
+
+            wandb.log({
+                'info/lr': lr_,
+                'info/total_loss': loss,
+                'info/loss_ce': loss_ce,
+                'info/loss_dice': loss_dice,
+                'info/consistency_loss': consistency_loss,
+                'info/consistency_weight': consistency_weight,
+            }, step=iter_num)
+
             writer.add_scalar('info/lr', lr_, iter_num)
             writer.add_scalar('info/total_loss', loss, iter_num)
             writer.add_scalar('info/loss_ce', loss_ce, iter_num)
@@ -233,6 +250,8 @@ def train(args, snapshot_path):
             logging.info(
                 'iteration %d : loss : %f, loss_ce: %f, loss_dice: %f' %
                 (iter_num, loss.item(), loss_ce.item(), loss_dice.item()))
+            iterator.set_description(
+                f'iteration {iter_num} : loss : {loss.item():.3f}, loss_ce: {loss_ce.item():.3f}, loss_dice: {loss_dice.item():.3f}')
 
             if iter_num % 20 == 0:
                 image = volume_batch[1, 0:1, :, :]
@@ -242,7 +261,15 @@ def train(args, snapshot_path):
                 writer.add_image('train/Prediction',
                                  outputs[1, ...] * 50, iter_num)
                 labs = label_batch[1, ...].unsqueeze(0) * 50
-                writer.add_image('train/GroundTruth', labs, iter_num)
+                writer.add_image('train/GroundTruth', labs.long(), iter_num)
+
+                wmask = wandb.Image(image, masks={
+                    "prediction": {"mask_data": outputs[1, ...].squeeze_().cpu().numpy(), "class_labels": {0: 'background', 1: 'lesions'}},
+                    "ground truth": {"mask_data": labs.squeeze_().cpu().numpy()/50, "class_labels": {0: 'background', 1: 'lesions'}}})
+                wandb.log({
+                    'predictions': wmask
+                })
+
 
             if iter_num > 0 and iter_num % 200 == 0:
                 model.eval()
@@ -250,9 +277,13 @@ def train(args, snapshot_path):
                 for i_batch, sampled_batch in enumerate(valloader):
                     metric_i = test_single_volume_ds(
                         sampled_batch["image"], sampled_batch["label"], model, classes=num_classes)
-                    metric_list += np.array(metric_i)
+                    metric_list += np.array(metric_i) # 求和
                 metric_list = metric_list / len(db_val)
                 for class_i in range(num_classes-1):
+                    # wandb.log({
+                    #     f'metrics/val_{class_i+1}_dice': metric_list[class_i, 0],
+                    #     f'metrics/val_{class_i+1}_hd95': metric_list[class_i, 1],
+                    # }, step=iter_num)
                     writer.add_scalar('info/val_{}_dice'.format(class_i+1),
                                       metric_list[class_i, 0], iter_num)
                     writer.add_scalar('info/val_{}_hd95'.format(class_i+1),
@@ -261,6 +292,10 @@ def train(args, snapshot_path):
                 performance = np.mean(metric_list, axis=0)[0]
 
                 mean_hd95 = np.mean(metric_list, axis=0)[1]
+                wandb.log({
+                    'info/val_mean_dice': performance,
+                    'info/val_mean_hd95': mean_hd95,
+                })
                 writer.add_scalar('info/val_mean_dice', performance, iter_num)
                 writer.add_scalar('info/val_mean_hd95', mean_hd95, iter_num)
 
@@ -317,6 +352,6 @@ if __name__ == "__main__":
 
     logging.basicConfig(filename=snapshot_path+"/log.txt", level=logging.INFO,
                         format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
-    logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
+    # logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
     logging.info(str(args))
     train(args, snapshot_path)
