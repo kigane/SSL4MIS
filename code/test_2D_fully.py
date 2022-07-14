@@ -52,6 +52,8 @@ def test_single_volume(case, net, test_save_path, FLAGS):
         with torch.no_grad():
             if FLAGS.model == "unet_urds":
                 out_main, _, _, _ = net(input)
+            if FLAGS.model == "unet_urpc":
+                out_main, _, _, _ = net(input)
             else:
                 out_main = net(input)
             out = torch.argmax(torch.softmax(
