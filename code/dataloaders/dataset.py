@@ -210,7 +210,7 @@ class CTATransform(object):
 
 class RandomGenerator(object):
     def __init__(self, output_size):
-        self.output_size = output_size
+        self.output_size = output_size if type(output_size[0]!=str) else [int(s) for s in output_size]
 
     def __call__(self, sample):
         image, label = sample["image"], sample["label"]
