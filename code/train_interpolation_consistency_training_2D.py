@@ -12,6 +12,7 @@ import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from scipy.ndimage.interpolation import zoom
 from tensorboardX import SummaryWriter
 from torch.nn import BCEWithLogitsLoss
 from torch.nn.modules.loss import CrossEntropyLoss
@@ -43,7 +44,7 @@ parser.add_argument('--deterministic', type=int,  default=1,
 parser.add_argument('--base_lr', type=float,  default=0.01,
                     help='segmentation network learning rate')
 parser.add_argument('--patch_size', type=int, nargs="+", default=[256, 256],
-                    help='patch size of network input')
+                    help='patch size fdsafdas of network input')
 parser.add_argument('--seed', type=int,  default=1337, help='random seed')
 parser.add_argument('--num_classes', type=int,  default=4,
                     help='output channel of network')
@@ -91,6 +92,23 @@ def update_ema_variables(model, ema_model, alpha, global_step):
         ema_param.data.mul_(alpha).add_(1 - alpha, param.data)
 
 
+class ResizeGenerator(object):
+    def __init__(self, output_size):
+        self.output_size = output_size if type(output_size[0] != str) else [
+            int(s) for s in output_size]
+
+    def __call__(self, sample):
+        image, label = sample["image"], sample["label"]
+        x, y = image.shape
+        image = zoom(
+            image, (self.output_size[0] / x, self.output_size[1] / y), order=0)
+        label = zoom(
+            label, (self.output_size[0] / x, self.output_size[1] / y), order=0)
+        image = torch.from_numpy(image.astype(np.float32)).unsqueeze(0)
+        label = torch.from_numpy(label.astype(np.uint8))
+        sample = {"image": image, "label": label}
+        return sample
+
 def train(args, snapshot_path):
     base_lr = args.base_lr
     num_classes = args.num_classes
@@ -115,7 +133,9 @@ def train(args, snapshot_path):
     db_train = BaseDataSets(base_dir=args.root_path, split="train", num=None, transform=transforms.Compose([
         RandomGenerator(args.patch_size)
     ]))
-    db_val = BaseDataSets(base_dir=args.root_path, split="val")
+    db_val = BaseDataSets(base_dir=args.root_path, split="val", transform=transforms.Compose([
+        ResizeGenerator(args.patch_size)
+    ]))
 
     total_slices = len(db_train)
     labeled_slice = patients_to_slices(args.root_path, args.labeled_num)
