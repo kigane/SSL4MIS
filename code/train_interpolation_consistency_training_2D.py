@@ -42,7 +42,7 @@ parser.add_argument('--deterministic', type=int,  default=1,
                     help='whether use deterministic training')
 parser.add_argument('--base_lr', type=float,  default=0.01,
                     help='segmentation network learning rate')
-parser.add_argument('--patch_size', type=list,  default=[256, 256],
+parser.add_argument('--patch_size', type=int, nargs="+", default=[256, 256],
                     help='patch size of network input')
 parser.add_argument('--seed', type=int,  default=1337, help='random seed')
 parser.add_argument('--num_classes', type=int,  default=4,
@@ -127,12 +127,12 @@ def train(args, snapshot_path):
         labeled_idxs, unlabeled_idxs, batch_size, batch_size-args.labeled_bs)
 
     trainloader = DataLoader(db_train, batch_sampler=batch_sampler,
-                             num_workers=4, pin_memory=True, worker_init_fn=worker_init_fn)
+                             num_workers=0, pin_memory=True, worker_init_fn=worker_init_fn)
 
     model.train()
 
     valloader = DataLoader(db_val, batch_size=1, shuffle=False,
-                           num_workers=1)
+                           num_workers=0)
 
     optimizer = optim.SGD(model.parameters(), lr=base_lr,
                           momentum=0.9, weight_decay=0.0001)
