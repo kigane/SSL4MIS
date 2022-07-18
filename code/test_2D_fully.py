@@ -102,6 +102,7 @@ def Inference(FLAGS):
     second_total = 0.0
     third_total = 0.0
     for case in tqdm(image_list):
+        # class=1:(dice, hd95, asd), class=2:(dice, hd95, asd), class=3:(dice, hd95, asd)
         first_metric, second_metric, third_metric = test_single_volume(
             case, net, test_save_path, FLAGS)
         first_total += np.asarray(first_metric)
@@ -109,11 +110,11 @@ def Inference(FLAGS):
         third_total += np.asarray(third_metric)
     avg_metric = [first_total / len(image_list), second_total /
                   len(image_list), third_total / len(image_list)]
-    return avg_metric
+    return avg_metric 
 
 
 if __name__ == '__main__':
     FLAGS = parser.parse_args()
     metric = Inference(FLAGS)
     print(metric)
-    print((metric[0]+metric[1]+metric[2])/3)
+    print((metric[0]+metric[1]+metric[2])/3) # (dice, hd95, asd)

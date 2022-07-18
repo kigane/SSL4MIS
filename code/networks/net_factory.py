@@ -8,6 +8,7 @@ from networks.nnunet import initialize_network
 from networks.pnet import PNet2D
 from networks.unet import UNet, UNet_CCT, UNet_DS, UNet_URPC
 from networks.vision_transformer import SwinUnet as ViT_seg
+from networks.maxvit import MaxViTUnet
 
 # only for vscode debug
 if 'code' not in os.path.abspath(os.curdir):
@@ -97,6 +98,8 @@ def net_factory(net_type="unet", in_chns=1, class_num=3):
                       num_classes=args.num_classes).cuda()
     elif net_type == "pnet":
         net = PNet2D(in_chns, class_num, 64, [1, 2, 4, 8, 16]).cuda()
+    elif net_type == "maxvit-net":
+        net = MaxViTUnet(in_chns, class_num).cuda()
     elif net_type == "nnUNet":
         net = initialize_network(num_classes=class_num).cuda()
     else:
