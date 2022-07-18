@@ -91,24 +91,6 @@ def update_ema_variables(model, ema_model, alpha, global_step):
     for ema_param, param in zip(ema_model.parameters(), model.parameters()):
         ema_param.data.mul_(alpha).add_(1 - alpha, param.data)
 
-
-class ResizeGenerator(object):
-    def __init__(self, output_size):
-        self.output_size = output_size if type(output_size[0] != str) else [
-            int(s) for s in output_size]
-
-    def __call__(self, sample):
-        image, label = sample["image"], sample["label"]
-        x, y = image.shape
-        image = zoom(
-            image, (self.output_size[0] / x, self.output_size[1] / y), order=0)
-        label = zoom(
-            label, (self.output_size[0] / x, self.output_size[1] / y), order=0)
-        image = torch.from_numpy(image.astype(np.float32)).unsqueeze(0)
-        label = torch.from_numpy(label.astype(np.uint8))
-        sample = {"image": image, "label": label}
-        return sample
-
 def train(args, snapshot_path):
     base_lr = args.base_lr
     num_classes = args.num_classes
@@ -133,9 +115,7 @@ def train(args, snapshot_path):
     db_train = BaseDataSets(base_dir=args.root_path, split="train", num=None, transform=transforms.Compose([
         RandomGenerator(args.patch_size)
     ]))
-    db_val = BaseDataSets(base_dir=args.root_path, split="val", transform=transforms.Compose([
-        ResizeGenerator(args.patch_size)
-    ]))
+    db_val = BaseDataSets(base_dir=args.root_path, split="val")
 
     total_slices = len(db_train)
     labeled_slice = patients_to_slices(args.root_path, args.labeled_num)
